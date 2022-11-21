@@ -1,0 +1,170 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: track-order-detail
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: track-order-detail-depl
+  labels:
+    app: track-order-detail
+  namespace: track-order-detail
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: track-order-detail
+  template:
+    metadata:
+      labels:
+        app: track-order-detail
+    spec:
+      containers:
+      - name: track-order-detail
+        image: localhost:8888/track_order_detail:Release_20220715171449
+        imagePullPolicy: Always
+        env:
+        - name: PROCESS_NAME
+          value: "track-order-detail"
+        - name: API_PORT
+          value: "5000"
+        - name: API_PATH
+          value: "/broadband"
+        - name: DB_HOST
+          value: "rengine-pgdb-service"
+        - name: DB_POOL
+          value: "1"
+        - name: LOG_LEVEL
+          value: "5"
+        - name: KAFKA_LOG
+          value: "N"
+        - name: KAFKA_BROKERS
+          value: "kafka-cluster-service"
+        - name: KAFKA_TOPIC_LOG
+          value: "bb_wrapper_logs"
+        - name: KAFKA_TOPIC_NEW 
+          value: "BROADBAND_KAFKA_TOPIC_NEW"
+        - name: KAFKA_TOPIC_NEWBULK 
+          value: "BROADBAND_KAFKA_TOPIC_NEWBULK"
+        - name: KAFKA_TOPIC_SHIFTING
+          value: "BB_APR_DATA_S02"
+        - name: KAFKA_TOPIC_MODIFY
+          value: "BB_APR_DATA_M01"
+        - name: KAFKA_TOPIC_DISCONNECT
+          value: "BB_APR_DATA_D01"
+        - name: CONSUMER_GROUP
+          value: "testing-3"
+        - name: WORKER_COUNT
+          value: "10"
+        - name: RULE_ENGINE_HOST
+          value: "rule-engine-api-lb.rule-engine-api.svc.cluster.local"
+        - name: RULE_ENGINE_PORT
+          value: "5000"
+        - name: RULE_ENGINE_ENDPOINT
+          value: "/rule-engine/broadband"
+        - name: DEVICE_TYPE_HOST
+          value: "optimus.airtel.com"
+        - name: DEVICE_TYPE_STPOINT
+          value: "/v1/services/"
+        - name: DEVICE_TYPE_ENDPOINT
+          value: "?lineOfBusiness=mobility"
+        - name: DEVICE_TYPE_SUBSCRIBERCODE
+          value: "7B738BC68AC4F5CE33D3723F58D67B9916B43FA13020F8BEC288273DF094AF8D"
+        - name: NODE_IP
+          valueFrom: 
+            fieldRef:
+              fieldPath: status.hostIP
+        ports:
+        - containerPort: 5000
+        volumeMounts:
+        - mountPath: /wrapper_broadband/logs
+          name: logs-volume
+      volumes:
+      - name: logs-volume
+        hostPath:
+          path: /data/rule_engine_logs/
+          type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: track-order-detail-lb
+  namespace: track-order-detail
+spec:
+  selector:
+    app: track-order-detail
+  ports:
+    - port: 5000
+      targetPort: 5000
+      protocol: TCP
+  externalTrafficPolicy: Local
+  type: LoadBalancer
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: track-order-detail-ingress
+  namespace: track-order-detail
+spec:
+  ingressClassName: nginx
+  rules:
+   - http:
+      paths:
+        - path: /broadband
+          pathType: Prefix
+          backend:
+            service:
+              name: track-order-detail-lb
+              port:
+                number: 5000
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: rengine-pgdb-service
+  namespace: track-order-detail
+spec:
+  clusterIP: None
+  ports:
+  - port: 5432
+---
+kind: Endpoints
+apiVersion: v1
+metadata:
+  name: rengine-pgdb-service
+  namespace: track-order-detail
+subsets:
+  - addresses:
+    - ip: 10.241.149.244
+    ports:
+      - port: 5432
+        name: rengine-pgdb-service
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+ name: kafka-cluster-service
+ namespace: track-order-detail
+spec:
+  clusterIP: None
+  ports:
+    - port: 9092
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+ name: kafka-cluster-service
+ namespace: track-order-detail
+subsets:
+  - addresses:
+    - ip: 10.241.148.250
+    - ip: 10.241.148.252
+    - ip: 10.241.148.253
+    ports:
+      - port: 9092
+        name: kafka-cluster-service
